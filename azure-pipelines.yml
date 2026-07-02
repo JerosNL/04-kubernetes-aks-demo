@@ -96,8 +96,9 @@ stages:
 
           - script: |
               kubectl get pods
-              kubectl get services
-            displayName: 'Verify deployment'
+              kubectl describe pods
+              kubectl get events --sort-by=.metadata.creationTimestamp
+            displayName: 'Diagnose deployment'
 
   - stage: Destroy
     displayName: 'Destroy AKS cluster'
