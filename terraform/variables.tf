@@ -25,5 +25,5 @@ variable "node_count" {
 variable "node_size" {
   description = "VM size for worker nodes"
   type        = string
-  default     = "Standard_B2als_v2"
+  default     = "Standard_D2s_v3"
 }
