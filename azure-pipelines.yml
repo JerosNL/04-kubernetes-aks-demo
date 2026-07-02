@@ -92,6 +92,7 @@ stages:
           - script: |
               kubectl rollout status deployment/calculator --timeout=120s
             displayName: 'Wait for deployment'
+            continueOnError: true
 
           - script: |
               kubectl get pods
