@@ -1,0 +1,132 @@
+trigger:
+  - main
+
+pool:
+  name: Default
+
+variables:
+  - name: registry
+    value: 'ghcr.io'
+  - name: imageName
+    value: 'jerosnl/calculator'
+  - name: imageTag
+    value: '$(Build.BuildId)'
+  - name: clusterName
+    value: 'aks-demo-jh'
+  - name: resourceGroup
+    value: 'rg-aks-demo'
+  - name: workingDirectory
+    value: '$(System.DefaultWorkingDirectory)/terraform'
+  - group: docker-secrets
+
+stages:
+  - stage: Provision
+    displayName: 'Provision AKS with Terraform'
+    jobs:
+      - job: TerraformApply
+        displayName: 'Terraform apply'
+        steps:
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: 'latest'
+
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform init'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(workingDirectory)'
+              backendServiceArm: 'azure-lab-portfolio'
+              backendAzureRmResourceGroupName: 'rg-tfstate-demo'
+              backendAzureRmStorageAccountName: 'sttfstatejh01'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: 'aks-terraform.tfstate'
+
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform apply'
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(workingDirectory)'
+              environmentServiceNameAzureRM: 'azure-lab-portfolio'
+
+  - stage: Build
+    displayName: 'Build and push Docker image'
+    dependsOn: Provision
+    jobs:
+      - job: DockerBuild
+        displayName: 'Build and push'
+        steps:
+          - script: |
+              docker build -t $(registry)/$(imageName):$(imageTag) -t $(registry)/$(imageName):latest .
+            displayName: 'Build image'
+
+          - script: |
+              echo $(GITHUB_TOKEN) | docker login $(registry) -u JerosNL --password-stdin
+              docker push $(registry)/$(imageName):$(imageTag)
+              docker push $(registry)/$(imageName):latest
+            displayName: 'Push image'
+
+  - stage: Deploy
+    displayName: 'Deploy to AKS'
+    dependsOn: Build
+    jobs:
+      - job: KubernetesDeploy
+        displayName: 'Deploy and verify'
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Get AKS credentials'
+            inputs:
+              azureSubscription: 'azure-lab-portfolio'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az aks get-credentials --resource-group $(resourceGroup) --name $(clusterName) --overwrite-existing
+
+          - script: |
+              kubectl apply -f k8s/deployment.yaml
+              kubectl apply -f k8s/service.yaml
+            displayName: 'Apply Kubernetes manifests'
+
+          - script: |
+              kubectl rollout status deployment/calculator --timeout=120s
+            displayName: 'Wait for deployment'
+
+          - script: |
+              kubectl get pods
+              kubectl get services
+            displayName: 'Verify deployment'
+
+  - stage: Destroy
+    displayName: 'Destroy AKS cluster'
+    dependsOn: Deploy
+    condition: always()
+    jobs:
+      - job: TerraformDestroy
+        displayName: 'Terraform destroy'
+        steps:
+          - task: TerraformInstaller@1
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: 'latest'
+
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform init'
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(workingDirectory)'
+              backendServiceArm: 'azure-lab-portfolio'
+              backendAzureRmResourceGroupName: 'rg-tfstate-demo'
+              backendAzureRmStorageAccountName: 'sttfstatejh01'
+              backendAzureRmContainerName: 'tfstate'
+              backendAzureRmKey: 'aks-terraform.tfstate'
+
+          - task: TerraformTaskV4@4
+            displayName: 'Terraform destroy'
+            inputs:
+              provider: 'azurerm'
+              command: 'destroy'
+              workingDirectory: '$(workingDirectory)'
+              environmentServiceNameAzureRM: 'azure-lab-portfolio'
