@@ -74,6 +74,7 @@ stages:
     jobs:
       - job: KubernetesDeploy
         displayName: 'Deploy and verify'
+        timeoutInMinutes: 15
         steps:
           - task: AzureCLI@2
             displayName: 'Get AKS credentials'
@@ -90,15 +91,16 @@ stages:
             displayName: 'Apply Kubernetes manifests'
 
           - script: |
-              kubectl rollout status deployment/calculator --timeout=120s
-            displayName: 'Wait for deployment'
-            continueOnError: true
-
-          - script: |
+              echo "=== Waiting 60 seconds for pod to start ==="
+              timeout 60
               kubectl get pods
               kubectl describe pods
               kubectl get events --sort-by=.metadata.creationTimestamp
-            displayName: 'Diagnose deployment'
+            displayName: 'Diagnose pod status'
+
+          - script: |
+              kubectl rollout status deployment/calculator --timeout=300s
+            displayName: 'Wait for deployment'
 
   - stage: Destroy
     displayName: 'Destroy AKS cluster'
