@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+*.egg-info
+azure-pipelines.yml
+README.md
+screenshots/
